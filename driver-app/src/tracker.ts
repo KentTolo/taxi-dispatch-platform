@@ -16,6 +16,7 @@ const FLUSH_EVERY_MS = 5_000;
 const MAX_BATCH = 200;
 const MAX_QUEUE = 3_000; // ~25 hours of heartbeats; oldest dropped beyond this
 const QUEUE_KEY = "driver.queue";
+const DIST_KEY = "driver.distance";
 
 export interface QueuedPoint {
   lat: number;
@@ -33,6 +34,8 @@ export interface TrackerState {
   queued: number;
   error: string | null;
   serverStatus: string | null;
+  /** Metres driven since the shift started on this phone (from kept GPS points). */
+  distanceM: number;
 }
 
 type Listener = (s: TrackerState) => void;
@@ -56,6 +59,7 @@ class Tracker {
     queued: this.queue.length,
     error: null,
     serverStatus: null,
+    distanceM: Number(localStorage.getItem(DIST_KEY) || 0),
   };
 
   subscribe(fn: Listener): () => void {
@@ -135,6 +139,11 @@ class Tracker {
     this.emit({ running: false });
   }
 
+  resetDistance() {
+    localStorage.setItem(DIST_KEY, "0");
+    this.emit({ distanceM: 0 });
+  }
+
   /** Drop unsent points, e.g. after a shift has ended on the server. */
   clearQueue() {
     this.queue = [];
@@ -153,6 +162,11 @@ class Tracker {
     const moved = prev ? distanceM(prev, p) : Infinity;
     const keep = gap >= HEARTBEAT_MS || (gap >= MIN_GAP_MS && moved >= MIN_MOVE_M);
     if (!keep) return;
+    // Count distance only for accurate fixes, and ignore GPS jumps (> 300 m in one step).
+    if (prev && moved < 300 && (p.accuracy ?? 99) <= 50) {
+      this.state.distanceM += moved;
+      localStorage.setItem(DIST_KEY, String(Math.round(this.state.distanceM)));
+    }
     this.lastKept = p;
     this.queue.push(p);
     if (this.queue.length > MAX_QUEUE) this.queue.splice(0, this.queue.length - MAX_QUEUE);
