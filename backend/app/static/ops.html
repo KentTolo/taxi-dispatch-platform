@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Live drivers</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 14px/1.4 system-ui, sans-serif; display: grid; grid-template-columns: 320px 1fr; height: 100vh; color: #1d1d1f; }
+  aside { border-right: 1px solid #ddd; overflow: auto; padding: 12px; background: #fafafa; }
+  #map { height: 100vh; }
+  h1 { font-size: 16px; margin: 0 0 8px; }
+  form { display: grid; gap: 6px; margin-bottom: 12px; }
+  input, button { font: inherit; padding: 6px 8px; border: 1px solid #ccc; border-radius: 6px; }
+  button { background: #1d1d1f; color: #fff; border: 0; cursor: pointer; }
+  .counts { display: flex; gap: 8px; flex-wrap: wrap; margin: 8px 0; }
+  .pill { padding: 2px 8px; border-radius: 999px; background: #eee; font-size: 12px; }
+  .driver { padding: 8px; border-radius: 6px; background: #fff; border: 1px solid #e5e5e5; margin-bottom: 6px; cursor: pointer; }
+  .driver small { color: #666; display: block; }
+  .dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 6px; vertical-align: middle; }
+  .hint { color: #666; font-size: 12px; }
+  #nearest { margin-top: 12px; }
+</style>
+</head>
+<body>
+<aside>
+  <h1>Live drivers</h1>
+  <form id="cfg">
+    <input id="company" placeholder="Company code" required>
+    <input id="key" placeholder="Operator key" type="password" required>
+    <button>Connect</button>
+  </form>
+  <div class="counts" id="counts"></div>
+  <div id="list"></div>
+  <div id="nearest"><p class="hint">Click the map to list the nearest available drivers to that point.</p></div>
+</aside>
+<div id="map"></div>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+const COLOURS = { available: "#1a9e4b", on_break: "#8a8a8a", offline: "#c9c9c9", lost: "#d93025" };
+const map = L.map("map").setView([-29.315, 27.486], 13); // Maseru
+L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+  maxZoom: 19, attribution: "&copy; OpenStreetMap contributors"
+}).addTo(map);
+
+const markers = new Map();
+let cfg = JSON.parse(localStorage.getItem("opsCfg") || "null");
+let nearestLayer = L.layerGroup().addTo(map);
+let fitted = false;
+
+const $ = (id) => document.getElementById(id);
+const esc = (v) => String(v ?? "").replace(/[&<>"']/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+if (cfg) { $("company").value = cfg.company; $("key").value = cfg.key; }
+$("cfg").onsubmit = (e) => {
+  e.preventDefault();
+  cfg = { company: $("company").value.trim(), key: $("key").value };
+  localStorage.setItem("opsCfg", JSON.stringify(cfg));
+  fitted = false;
+  refresh();
+};
+
+async function api(path) {
+  const r = await fetch(path, { headers: { "X-Ops-Key": cfg.key } });
+  if (!r.ok) throw new Error((await r.json()).detail || r.statusText);
+  return r.json();
+}
+
+function colourFor(d) { return d.signal_lost ? COLOURS.lost : (COLOURS[d.status] || "#1a73e8"); }
+function age(s) { return s == null ? "no position yet" : s < 60 ? `${s}s ago` : `${Math.round(s / 60)} min ago`; }
+
+async function refresh() {
+  if (!cfg) return;
+  let data;
+  try { data = await api(`/api/ops/drivers?company=${encodeURIComponent(cfg.company)}`); }
+  catch (err) { $("list").innerHTML = `<p class="hint">${esc(err.message)}</p>`; return; }
+
+  const seen = new Set();
+  const counts = { available: 0, on_break: 0, lost: 0 };
+  $("list").innerHTML = "";
+  for (const d of data.drivers) {
+    if (d.signal_lost) counts.lost++; else if (counts[d.status] != null) counts[d.status]++;
+    const el = document.createElement("div");
+    el.className = "driver";
+    el.innerHTML = `<span class="dot" style="background:${colourFor(d)}"></span><b>${esc(d.name)}</b>
+      <small>${esc(d.vehicle || "no vehicle")} · ${d.signal_lost ? "signal lost" : d.status.replace("_", " ")} · ${age(d.position_age_s)}${d.battery != null ? " · battery " + d.battery + "%" : ""}</small>`;
+    if (d.lat != null) {
+      seen.add(d.id);
+      let m = markers.get(d.id);
+      const style = { radius: 9, color: "#fff", weight: 2, fillColor: colourFor(d), fillOpacity: 1 };
+      if (!m) { m = L.circleMarker([d.lat, d.lng], style).addTo(map); markers.set(d.id, m); }
+      m.setLatLng([d.lat, d.lng]).setStyle(style)
+        .bindTooltip(`${esc(d.name)} (${esc(d.vehicle || "-")})<br>${d.speed_kmh != null ? d.speed_kmh + " km/h · " : ""}${age(d.position_age_s)}`);
+      el.onclick = () => map.setView([d.lat, d.lng], 16);
+    }
+    $("list").appendChild(el);
+  }
+  for (const [id, m] of markers) if (!seen.has(id)) { m.remove(); markers.delete(id); }
+  $("counts").innerHTML = `<span class="pill">${data.drivers.length} on shift</span>
+    <span class="pill" style="color:${COLOURS.available}">${counts.available} available</span>
+    <span class="pill">${counts.on_break} on break</span>
+    <span class="pill" style="color:${COLOURS.lost}">${counts.lost} signal lost</span>`;
+  if (!fitted && markers.size) {
+    map.fitBounds(L.featureGroup([...markers.values()]).getBounds().pad(0.3), { maxZoom: 15 });
+    fitted = true;
+  }
+}
+
+map.on("click", async (e) => {
+  if (!cfg) return;
+  nearestLayer.clearLayers();
+  L.marker(e.latlng).addTo(nearestLayer).bindTooltip("Pickup").openTooltip();
+  try {
+    const r = await api(`/api/ops/drivers/nearest?company=${encodeURIComponent(cfg.company)}&lat=${e.latlng.lat}&lng=${e.latlng.lng}`);
+    $("nearest").innerHTML = `<b>Nearest available (within ${r.radius_km} km)</b>` +
+      (r.drivers.length ? "<ol>" + r.drivers.map(d => `<li>${esc(d.name)} — ${d.distance_km} km</li>`).join("") + "</ol>"
+                        : `<p class="hint">No available drivers in range.</p>`);
+    r.drivers.slice(0, 1).forEach(d => L.polyline([e.latlng, [d.lat, d.lng]], { dashArray: "4 6" }).addTo(nearestLayer));
+  } catch (err) { $("nearest").innerHTML = `<p class="hint">${esc(err.message)}</p>`; }
+});
+
+refresh();
+setInterval(refresh, 5000);
+</script>
+</body>
+</html>

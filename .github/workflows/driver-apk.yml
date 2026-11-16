@@ -1,0 +1,69 @@
+name: Driver app APK
+
+on:
+  push:
+    branches: [main]
+    paths: ["driver-app/**", ".github/workflows/driver-apk.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: driver-app
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: driver-app/package-lock.json
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - uses: android-actions/setup-android@v3
+
+      - name: Build web app
+        env:
+          # Set this repository variable to the demo server address so drivers don't have to type it.
+          VITE_DEFAULT_SERVER: ${{ vars.DEMO_SERVER_URL }}
+        run: |
+          npm ci
+          npm run build
+          npx cap sync android
+
+      - name: Build APK
+        env:
+          VERSION_CODE: ${{ github.run_number }}
+        run: |
+          cd android
+          chmod +x gradlew
+          ./gradlew assembleDebug --no-daemon
+          cp app/build/outputs/apk/debug/app-debug.apk ../driver-app.apk
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: driver-app-${{ github.run_number }}
+          path: driver-app/driver-app.apk
+
+      # A fixed download link for drivers: .../releases/download/driver-latest/driver-app.apk
+      - name: Publish as "driver-latest" release
+        if: github.ref == 'refs/heads/main'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: driver-latest
+          name: Driver app (latest build ${{ github.run_number }})
+          prerelease: true
+          make_latest: false
+          files: driver-app/driver-app.apk
+          body: |
+            Install on Android: download driver-app.apk, open it, and allow "Install unknown apps" when asked.
+            Build ${{ github.run_number }} from ${{ github.sha }}.

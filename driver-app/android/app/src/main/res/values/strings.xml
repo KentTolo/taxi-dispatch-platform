@@ -1,0 +1,10 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Driver</string>
+    <string name="title_activity_main">Driver</string>
+    <string name="package_name">com.taxidispatch.driver</string>
+    <string name="custom_url_scheme">com.taxidispatch.driver</string>
+    <!-- Background location plugin: name of the "on shift" notification channel. -->
+    <string name="capacitor_background_geolocation_notification_channel_name">Shift tracking</string>
+    <string name="capacitor_background_geolocation_notification_color">#1a9e4b</string>
+</resources>
