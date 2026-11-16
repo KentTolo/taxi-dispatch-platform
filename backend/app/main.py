@@ -30,6 +30,18 @@ app.add_middleware(
     allow_headers=["Authorization", "Content-Type", "X-Ops-Key"],
 )
 
+@app.middleware("http")
+async def no_stale_pages(request, call_next):
+    """Hashed asset files can be cached forever; the page that loads them must not be."""
+    response = await call_next(request)
+    path = request.url.path
+    if path.startswith("/driver") and "/assets/" not in path or path == "/ops":
+        response.headers["Cache-Control"] = "no-cache"
+    elif "/assets/" in path:
+        response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+    return response
+
+
 app.include_router(auth.router)
 app.include_router(driver.router)
 app.include_router(ops.router)

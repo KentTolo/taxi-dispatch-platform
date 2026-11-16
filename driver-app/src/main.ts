@@ -125,7 +125,7 @@ function renderPhone() {
         <h1>What's your number?</h1>
         <p class="lede">We'll text you a code to sign in to <b>${esc(s.company)}</b>.</p>
         <div class="phone-field">
-          <span class="cc">🇱🇸 +266</span>
+          <span class="cc">+266</span>
           <input id="phone" type="tel" inputmode="numeric" autocomplete="tel-national" placeholder="5800 0000" maxlength="9" aria-label="Mobile number">
         </div>
       </div>
