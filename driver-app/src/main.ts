@@ -18,8 +18,9 @@ interface Vehicle {
 }
 
 // In the Android app the default comes from the build; opened in a browser, use the site it came from.
+const DEMO_SERVER = "https://taxi-platform-demo.onrender.com";
 const DEFAULT_SERVER =
-  import.meta.env.VITE_DEFAULT_SERVER || (Capacitor.isNativePlatform() ? "" : window.location.origin);
+  import.meta.env.VITE_DEFAULT_SERVER || (Capacitor.isNativePlatform() ? DEMO_SERVER : window.location.origin);
 const root = document.getElementById("app")!;
 
 let me: Me | null = null;
