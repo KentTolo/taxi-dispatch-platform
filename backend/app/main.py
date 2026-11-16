@@ -3,7 +3,8 @@ from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, RedirectResponse
+from fastapi.staticfiles import StaticFiles
 
 from .db import Base, engine
 from .routers import auth, driver, ops
@@ -37,6 +38,17 @@ app.include_router(ops.router)
 @app.get("/health")
 def health():
     return {"ok": True}
+
+
+# Driver screens in a phone browser, for trying the app without installing it.
+# (Background tracking needs the Android app.)
+if (STATIC / "driver").exists():
+    app.mount("/driver", StaticFiles(directory=STATIC / "driver", html=True), name="driver")
+
+
+@app.get("/", include_in_schema=False)
+def home():
+    return RedirectResponse("/driver/")
 
 
 @app.get("/ops", include_in_schema=False)

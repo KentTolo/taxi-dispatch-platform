@@ -17,7 +17,9 @@ interface Vehicle {
   label: string;
 }
 
-const DEFAULT_SERVER = import.meta.env.VITE_DEFAULT_SERVER || "";
+// In the Android app the default comes from the build; opened in a browser, use the site it came from.
+const DEFAULT_SERVER =
+  import.meta.env.VITE_DEFAULT_SERVER || (Capacitor.isNativePlatform() ? "" : window.location.origin);
 const root = document.getElementById("app")!;
 
 let me: Me | null = null;
